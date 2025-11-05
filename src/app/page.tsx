@@ -1,6 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link'
+import { Dialog, DialogTrigger, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import LoginForm from '@/components/LoginForm'
 import { Building2, Users, MessageSquare, BarChart3, Settings, Menu, X, Globe, Phone, Mail, MapPin, Star, ArrowRight, CheckCircle, Clock, TrendingUp } from 'lucide-react';
 import { useLanguage } from '@/hooks/useLanguage';
 import { SERVICES, URGENCY_LEVELS, BUDGET_RANGES, COMPANY_INFO } from '@/lib/constants';
@@ -20,6 +23,25 @@ export default function Home() {
     urgency: 'media' as 'baixa' | 'media' | 'alta',
     budget: ''
   });
+
+  const [currentUser, setCurrentUser] = useState<{ full_name?: string } | null>(null);
+
+  useEffect(() => {
+    // fetch current user (if any) to show their name on CTAs
+    let mounted = true;
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!mounted) return;
+        if (data?.ok && data.user) {
+          setCurrentUser({ full_name: data.user.full_name });
+        }
+      })
+      .catch(() => {
+        /* ignore errors silently */
+      });
+    return () => { mounted = false };
+  }, []);
 
   const t = {
     pt: {
@@ -198,6 +220,18 @@ export default function Home() {
               <Globe className="h-4 w-4 mr-1" />
               {language.toUpperCase()}
             </button>
+            {/* Login dialog trigger */}
+            <Dialog>
+              <DialogTrigger asChild>
+                <button className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">
+                  Login
+                </button>
+              </DialogTrigger>
+                <DialogContent>
+                <DialogTitle>Login</DialogTitle>
+                <LoginForm />
+              </DialogContent>
+            </Dialog>
           </div>
 
           <div className="md:hidden">
@@ -237,6 +271,17 @@ export default function Home() {
               <Globe className="h-4 w-4 mr-2" />
               {language.toUpperCase()}
             </button>
+            <div className="px-3 py-2">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">Login</button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogTitle>Login</DialogTitle>
+                  <LoginForm />
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         </div>
       )}
@@ -255,13 +300,15 @@ export default function Home() {
             <p className="text-xl md:text-2xl mb-8 text-blue-100 max-w-3xl mx-auto">
               {currentLang.hero.subtitle}
             </p>
-            <button
-              onClick={() => setActiveTab('quote')}
-              className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-50 transition-colors inline-flex items-center"
-            >
-              {currentLang.hero.cta}
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </button>
+            <div className="inline-flex">
+              <button
+                onClick={() => setActiveTab('quote')}
+                className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-50 transition-colors inline-flex items-center"
+              >
+                {currentUser?.full_name ? `Pedir Orçamento — ${currentUser.full_name}` : 'Pedir Orçamento'}
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
