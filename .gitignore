@@ -16,3 +16,4 @@ yarn-error.log*
 # Optional: editor folders
 .vscode/
 node_modules
+.vercel

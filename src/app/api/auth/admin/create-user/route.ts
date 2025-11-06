@@ -5,7 +5,7 @@ import supabaseAdmin from '@/lib/supabaseAdmin'
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-  const { email, password, full_name, role } = body
+  let { email, password, full_name, role } = body
 
     if (!email || !password) {
       return NextResponse.json({ ok: false, error: 'Email and password required' }, { status: 400 })
@@ -15,18 +15,43 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'Server misconfigured: missing SUPABASE_SERVICE_ROLE or NEXT_PUBLIC_SUPABASE_URL' }, { status: 500 })
     }
 
-    const hash = await bcrypt.hash(password, 12)
+  // normalize email and hash password
+  email = (email || '').toString().trim().toLowerCase()
+  const hash = await bcrypt.hash(password, 12)
 
-    // normalize and validate role
+    // normalize and validate role (accept textual role or numeric role_id)
     const allowedRoles = ['admin', 'client', 'franqueador', 'franqueado']
     const roleRaw = (role || '').toString().toLowerCase()
     let finalRole = 'client'
-    if (roleRaw) {
-      if (roleRaw === 'cliente') finalRole = 'client'
-      else if (allowedRoles.includes(roleRaw)) finalRole = roleRaw
+    let finalRoleId: number | null = null
+
+    // If a numeric role id was provided, use it directly
+    if (/^\d+$/.test(roleRaw)) {
+      finalRoleId = parseInt(roleRaw, 10)
+    } else if (roleRaw) {
+      // If a textual role name was provided, try to resolve it to a role_id in the `roles` table
+      const normalized = roleRaw === 'cliente' ? 'client' : roleRaw
+      if (allowedRoles.includes(normalized)) {
+        try {
+          const lookup = await (supabaseAdmin as any).from('roles').select('role_id, name').ilike('name', normalized).maybeSingle()
+          if (lookup && (lookup as any).data && (lookup as any).data.role_id != null) {
+            finalRoleId = Number((lookup as any).data.role_id)
+          } else {
+            // no roles table or not found — fall back to storing textual role
+            finalRole = normalized
+          }
+        } catch (e) {
+          // roles table may not exist or permission issue — fallback to textual role
+          finalRole = normalized
+        }
+      }
     }
 
-    const { data, error } = await (supabaseAdmin as any).from('users').insert({ email, full_name, role: finalRole, password_hash: hash }).select('id, email, full_name, role').maybeSingle()
+    const insertPayload: any = { email, full_name, password_hash: hash }
+    if (finalRoleId != null) insertPayload.role_id = finalRoleId
+    else insertPayload.role = finalRole
+
+  const { data, error } = await (supabaseAdmin as any).from('users').insert(insertPayload).select('id, email, full_name, role_id').maybeSingle()
     if (error) {
       const msg = String(error?.message ?? '')
       // Detect table missing and return a helpful error

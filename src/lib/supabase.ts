@@ -1,9 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 
 // Public keys should be exposed to the browser via NEXT_PUBLIC_* env vars.
+// Support production-specific env variants (e.g. NEXT_PUBLIC_SUPABASE_URL_PROD) when running in production.
+function pickEnv(name: string) {
+  const isProd = (process.env.VERCEL_ENV === 'production') || (process.env.NODE_ENV === 'production') || (process.env.VERCEL_GIT_COMMIT_REF === 'main')
+  if (isProd) return process.env[`${name}_PROD`] ?? process.env[name]
+  return process.env[name]
+}
+
 // Keep service role keys out of client-side code and only use them on the server.
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseUrl = pickEnv('NEXT_PUBLIC_SUPABASE_URL')
+const supabaseAnonKey = pickEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
 
 // Only create the browser client when running on the client and when env vars exist.
 // This prevents server-side imports from throwing when vars aren't set in certain environments.

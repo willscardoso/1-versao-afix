@@ -2,23 +2,42 @@
 
 import React from 'react'
 import LoginForm from '@/components/LoginForm'
+import SiteHeader from '@/components/SiteHeader'
+import SiteFooter from '@/components/SiteFooter'
 import Link from 'next/link'
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12">
-      <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold">Entrar na sua conta</h1>
-          <p className="text-sm text-gray-600">Use o seu email e password para entrar</p>
-        </div>
+    <div className="min-h-screen bg-white">
+      <SiteHeader />
+      <main className="py-12">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white rounded-lg overflow-hidden shadow-lg md:h-[600px]">
+            {/* Left panel for sign-up prompt */}
+            <div className="hidden md:flex items-center justify-center bg-blue-600 p-10 h-full">
+              <div className="text-center text-white max-w-md">
+                <h2 className="text-3xl font-bold mb-4">Create Account</h2>
+                <p className="mb-6">or use your email for registration</p>
+                <Link href="/register" className="inline-block px-6 py-3 border border-white rounded-full hover:bg-white hover:text-blue-600 transition">Registar</Link>
+              </div>
+            </div>
 
-        <LoginForm />
+            {/* Right form panel */}
+            <div className="p-8 bg-white flex items-center justify-center h-full overflow-y-auto">
+              <div className="w-full max-w-md">
+                {/* title removed per request */}
 
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <Link href="/" className="text-blue-600 hover:underline">Voltar ao início</Link>
+                <LoginForm />
+
+                <div className="mt-6 text-center text-sm text-gray-600">
+                  <Link href="/" className="text-blue-600 hover:underline">Voltar ao início</Link>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </main>
+      <SiteFooter />
     </div>
   )
 }

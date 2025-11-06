@@ -25,8 +25,16 @@ export default function LoginForm() {
       if (!res.ok || !data.ok) {
         throw new Error(data.error || 'Login failed')
       }
-      // on success redirect to home
-      router.push('/')
+      // on success navigate to home and force a reload so app-level auth state updates
+      // (we set session cookie server-side; reload ensures /api/auth/me returns the user)
+      try {
+        // prefer client-side navigation then full reload to ensure fresh data
+        router.replace('/')
+      } catch (e) {
+        /* ignore */
+      }
+      // force a full reload to refresh auth state
+      if (typeof window !== 'undefined') window.location.href = '/'
     } catch (err: any) {
       setError(err.message ?? 'Erro ao iniciar sessão')
     } finally {
@@ -62,7 +70,7 @@ export default function LoginForm() {
 
         {error && <div className="text-sm text-red-600">{error}</div>}
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-start">
           <button
             type="submit"
             disabled={loading}

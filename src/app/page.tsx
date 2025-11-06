@@ -1,16 +1,19 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link'
-import { Dialog, DialogTrigger, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import LoginForm from '@/components/LoginForm'
+import { useState, useEffect, useRef } from 'react';
+import { useToast } from '@/hooks/use-toast'
+import { useRouter } from 'next/navigation'
+// Login is a dedicated page at /login
 import { Building2, Users, MessageSquare, BarChart3, Settings, Menu, X, Globe, Phone, Mail, MapPin, Star, ArrowRight, CheckCircle, Clock, TrendingUp } from 'lucide-react';
 import { useLanguage } from '@/hooks/useLanguage';
 import { SERVICES, URGENCY_LEVELS, BUDGET_RANGES, COMPANY_INFO } from '@/lib/constants';
 import { ServiceType, QuoteRequest } from '@/lib/types';
+import BancaPage from '@/app/banca/page'
+import SiteFooter from '@/components/SiteFooter'
 
 export default function Home() {
   const { language, toggleLanguage } = useLanguage();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'home' | 'quote' | 'franchise' | 'dashboard' | 'chat'>('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quoteForm, setQuoteForm] = useState({
@@ -23,8 +26,19 @@ export default function Home() {
     urgency: 'media' as 'baixa' | 'media' | 'alta',
     budget: ''
   });
+  // Use refs for form controls to avoid controlled re-renders that steal focus
+  const nameRef = useRef<HTMLInputElement | null>(null)
+  const emailRef = useRef<HTMLInputElement | null>(null)
+  const phoneRef = useRef<HTMLInputElement | null>(null)
+  const serviceRef = useRef<HTMLSelectElement | null>(null)
+  const locationRef = useRef<HTMLInputElement | null>(null)
+  const descriptionRef = useRef<HTMLTextAreaElement | null>(null)
+  const urgencyRef = useRef<HTMLSelectElement | null>(null)
+  const budgetRef = useRef<HTMLSelectElement | null>(null)
 
-  const [currentUser, setCurrentUser] = useState<{ full_name?: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id?: string; email?: string; full_name?: string; role?: string } | null>(null);
+  const [projetos, setProjetos] = useState<any[]>([])
+  const router = useRouter();
 
   useEffect(() => {
     // fetch current user (if any) to show their name on CTAs
@@ -34,7 +48,9 @@ export default function Home() {
       .then((data) => {
         if (!mounted) return;
         if (data?.ok && data.user) {
-          setCurrentUser({ full_name: data.user.full_name });
+          // normalize role to lowercase for consistent checks across the app
+          const role = data.user.role ? String(data.user.role).toLowerCase() : undefined
+          setCurrentUser({ id: data.user.id, email: data.user.email, full_name: data.user.full_name, role });
         }
       })
       .catch(() => {
@@ -42,6 +58,31 @@ export default function Home() {
       });
     return () => { mounted = false };
   }, []);
+
+  // load projetos for cliente users from the secure server-side endpoint
+  useEffect(() => {
+    let mounted = true
+    async function loadProjetos() {
+      if (!currentUser || !currentUser.email) return
+      const role = String(currentUser.role || '').toLowerCase()
+      // allow cliente, franqueado and franqueador to load their projetos
+      if (!['cliente', 'franqueado', 'franqueador'].includes(role)) return
+      try {
+        const res = await fetch('/api/me/projetos', { method: 'GET', credentials: 'same-origin' })
+        const payload = await res.json()
+        if (!mounted) return
+        if (!res.ok || !payload.ok) {
+          console.warn('Failed to load projetos via server endpoint', payload.error)
+          return
+        }
+        setProjetos(payload.projetos || [])
+      } catch (err) {
+        // ignore
+      }
+    }
+    loadProjetos()
+    return () => { mounted = false }
+  }, [currentUser])
 
   const t = {
     pt: {
@@ -176,18 +217,43 @@ export default function Home() {
 
   const handleQuoteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Aqui seria enviado para o backend e email
-    alert(language === 'pt' ? 'Orçamento enviado com sucesso!' : 'Quote sent successfully!');
-    setQuoteForm({
-      name: '',
-      email: '',
-      phone: '',
-      service: '',
-      description: '',
-      location: '',
-      urgency: 'media',
-      budget: ''
-    });
+    // send to server API to persist the quote
+    ;(async () => {
+      try {
+        const payload = {
+          name: nameRef.current?.value || '',
+          email: emailRef.current?.value || '',
+          phone: phoneRef.current?.value || '',
+          service: serviceRef.current?.value || '',
+          description: descriptionRef.current?.value || '',
+          location: locationRef.current?.value || '',
+          urgency: urgencyRef.current?.value || '',
+          budget: budgetRef.current?.value || ''
+        }
+
+        const res = await fetch('/api/quotes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        const data = await res.json()
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to submit')
+        // use toast instead of alert
+        toast({ title: language === 'pt' ? 'Orçamento enviado' : 'Quote sent', description: language === 'pt' ? 'O seu pedido foi recebido.' : 'Your request has been received.' })
+        // clear uncontrolled inputs
+        if (nameRef.current) nameRef.current.value = ''
+        if (emailRef.current) emailRef.current.value = ''
+        if (phoneRef.current) phoneRef.current.value = ''
+        if (serviceRef.current) serviceRef.current.value = ''
+        if (descriptionRef.current) descriptionRef.current.value = ''
+        if (locationRef.current) locationRef.current.value = ''
+        if (urgencyRef.current) urgencyRef.current.value = 'media'
+        if (budgetRef.current) budgetRef.current.value = ''
+        setQuoteForm({ name: '', email: '', phone: '', service: '', description: '', location: '', urgency: 'media', budget: '' })
+      } catch (err: any) {
+        toast({ title: language === 'pt' ? 'Erro' : 'Error', description: err?.message ?? 'Erro ao enviar pedido' })
+      }
+    })()
   };
 
   const Navigation = () => (
@@ -220,18 +286,24 @@ export default function Home() {
               <Globe className="h-4 w-4 mr-1" />
               {language.toUpperCase()}
             </button>
-            {/* Login dialog trigger */}
-            <Dialog>
-              <DialogTrigger asChild>
-                <button className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">
-                  Login
-                </button>
-              </DialogTrigger>
-                <DialogContent>
-                <DialogTitle>Login</DialogTitle>
-                <LoginForm />
-              </DialogContent>
-            </Dialog>
+            {/* Auth controls */}
+            {currentUser ? (
+              <button
+                onClick={async () => {
+                  try {
+                    await fetch('/api/auth/logout', { method: 'POST' })
+                  } catch (e) {}
+                  setCurrentUser(null)
+                  setActiveTab('home')
+                  router.push('/')
+                }}
+                className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600"
+              >
+                Logout
+              </button>
+            ) : (
+              <button onClick={() => router.push('/login')} className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">Login</button>
+            )}
           </div>
 
           <div className="md:hidden">
@@ -272,15 +344,22 @@ export default function Home() {
               {language.toUpperCase()}
             </button>
             <div className="px-3 py-2">
-              <Dialog>
-                <DialogTrigger asChild>
-                  <button className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">Login</button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogTitle>Login</DialogTitle>
-                  <LoginForm />
-                </DialogContent>
-              </Dialog>
+              {currentUser ? (
+                <button
+                  onClick={async () => {
+                      try {
+                        await fetch('/api/auth/logout', { method: 'POST' })
+                      } catch (e) {}
+                      setCurrentUser(null)
+                      setMobileMenuOpen(false)
+                      setActiveTab('home')
+                      router.push('/')
+                    }}
+                  className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600"
+                >Logout</button>
+              ) : (
+                <button onClick={() => { setMobileMenuOpen(false); router.push('/login') }} className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">Login</button>
+              )}
             </div>
           </div>
         </div>
@@ -401,8 +480,8 @@ export default function Home() {
                 <input
                   type="text"
                   required
-                  value={quoteForm.name}
-                  onChange={(e) => setQuoteForm({...quoteForm, name: e.target.value})}
+                  ref={nameRef}
+                  defaultValue={quoteForm.name}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -413,8 +492,8 @@ export default function Home() {
                 <input
                   type="email"
                   required
-                  value={quoteForm.email}
-                  onChange={(e) => setQuoteForm({...quoteForm, email: e.target.value})}
+                  ref={emailRef}
+                  defaultValue={quoteForm.email}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -428,8 +507,8 @@ export default function Home() {
                 <input
                   type="tel"
                   required
-                  value={quoteForm.phone}
-                  onChange={(e) => setQuoteForm({...quoteForm, phone: e.target.value})}
+                  ref={phoneRef}
+                  defaultValue={quoteForm.phone}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -439,8 +518,8 @@ export default function Home() {
                 </label>
                 <select
                   required
-                  value={quoteForm.service}
-                  onChange={(e) => setQuoteForm({...quoteForm, service: e.target.value as ServiceType})}
+                  ref={serviceRef}
+                  defaultValue={quoteForm.service}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Selecione um serviço</option>
@@ -460,8 +539,8 @@ export default function Home() {
               <input
                 type="text"
                 required
-                value={quoteForm.location}
-                onChange={(e) => setQuoteForm({...quoteForm, location: e.target.value})}
+                ref={locationRef}
+                defaultValue={quoteForm.location}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder={language === 'pt' ? 'Cidade, Distrito' : 'City, District'}
               />
@@ -474,8 +553,8 @@ export default function Home() {
               <textarea
                 required
                 rows={4}
-                value={quoteForm.description}
-                onChange={(e) => setQuoteForm({...quoteForm, description: e.target.value})}
+                ref={descriptionRef}
+                defaultValue={quoteForm.description}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder={language === 'pt' ? 'Descreva detalhadamente o seu projeto...' : 'Describe your project in detail...'}
               />
@@ -487,8 +566,9 @@ export default function Home() {
                   {currentLang.quote.form.urgency}
                 </label>
                 <select
-                  value={quoteForm.urgency}
-                  onChange={(e) => setQuoteForm({...quoteForm, urgency: e.target.value as any})}
+                  ref={urgencyRef}
+                  defaultValue={quoteForm.urgency}
+                  onChange={() => { /* keep uncontrolled */ }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   {Object.entries(URGENCY_LEVELS).map(([key, level]) => (
@@ -503,8 +583,9 @@ export default function Home() {
                   {currentLang.quote.form.budget}
                 </label>
                 <select
-                  value={quoteForm.budget}
-                  onChange={(e) => setQuoteForm({...quoteForm, budget: e.target.value})}
+                  ref={budgetRef}
+                  defaultValue={quoteForm.budget}
+                  onChange={() => { /* keep uncontrolled */ }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Selecione uma faixa</option>
@@ -702,29 +783,62 @@ export default function Home() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               {language === 'pt' ? 'Pedidos Recentes' : 'Recent Requests'}
             </h3>
-            <div className="space-y-4">
-              {[
-                { name: 'Maria Santos', service: 'Remodelação', location: 'Lisboa', status: 'pendente' },
-                { name: 'Carlos Oliveira', service: 'Pintura', location: 'Porto', status: 'em_analise' },
-                { name: 'Ana Costa', service: 'Canalização', location: 'Braga', status: 'respondido' }
-              ].map((request, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">{request.name}</p>
-                    <p className="text-sm text-gray-600">{request.service} • {request.location}</p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    request.status === 'pendente' ? 'bg-yellow-100 text-yellow-800' :
-                    request.status === 'em_analise' ? 'bg-blue-100 text-blue-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {request.status === 'pendente' ? (language === 'pt' ? 'Pendente' : 'Pending') :
-                     request.status === 'em_analise' ? (language === 'pt' ? 'Em Análise' : 'In Analysis') :
-                     (language === 'pt' ? 'Respondido' : 'Responded')}
-                  </span>
+            {['cliente', 'franqueado', 'franqueador'].includes(String(currentUser?.role || '').toLowerCase()) ? (
+              projetos.length === 0 ? (
+                <p className="text-sm text-gray-600">{language === 'pt' ? 'Ainda não tem pedidos.' : 'You have no requests yet.'}</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {projetos.map((p) => (
+                    <div key={p.id} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold text-gray-900">{p.full_name || p.email}</p>
+                          <p className="text-sm text-gray-600">{p.service} • {p.location}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${p.status === 'pendente' ? 'bg-yellow-100 text-yellow-800' : p.status === 'em_analise' ? 'bg-blue-100 text-blue-800' : p.status === 'finalizado' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                            {p.status === 'pendente' ? (language === 'pt' ? 'Pendente' : 'Pending') : p.status === 'em_analise' ? (language === 'pt' ? 'Em Análise' : 'In Analysis') : p.status === 'finalizado' ? (language === 'pt' ? 'Finalizado' : 'Finished') : (language === 'pt' ? 'Respondido' : 'Responded')}
+                          </span>
+                          <div className="text-xs text-gray-500 mt-1">{new Date(p.created_at).toLocaleString()}</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 text-sm text-gray-700">{p.description}</div>
+                      <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
+                        {/* clients should not see contact info here; admins should */}
+                        <div>
+                          {String(currentUser?.role || '').toLowerCase() === 'admin' ? <span>{p.email} • {p.phone}</span> : null}
+                        </div>
+                        <div className="font-medium">{p.budget ? `€ ${p.budget}` : ''}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )
+            ) : (
+              <div className="space-y-4">
+                {[
+                  { name: 'Maria Santos', service: 'Remodelação', location: 'Lisboa', status: 'pendente' },
+                  { name: 'Carlos Oliveira', service: 'Pintura', location: 'Porto', status: 'em_analise' },
+                  { name: 'Ana Costa', service: 'Canalização', location: 'Braga', status: 'respondido' }
+                ].map((request, index) => (
+                  <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="font-medium text-gray-900">{request.name}</p>
+                      <p className="text-sm text-gray-600">{request.service} • {request.location}</p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      request.status === 'pendente' ? 'bg-yellow-100 text-yellow-800' :
+                      request.status === 'em_analise' ? 'bg-blue-100 text-blue-800' :
+                      'bg-green-100 text-green-800'
+                    }`}>
+                      {request.status === 'pendente' ? (language === 'pt' ? 'Pendente' : 'Pending') :
+                       request.status === 'em_analise' ? (language === 'pt' ? 'Em Análise' : 'In Analysis') :
+                       (language === 'pt' ? 'Respondido' : 'Responded')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-xl shadow-lg p-6">
@@ -869,6 +983,13 @@ export default function Home() {
   );
 
   const renderContent = () => {
+      // If user is authenticated, show the banca (project details) for clients,
+      // otherwise show the admin Dashboard.
+      if (currentUser) {
+        const role = String(currentUser.role || '').toLowerCase()
+        if (['cliente', 'franqueado', 'franqueador'].includes(role)) return <BancaPage />
+        return <DashboardPage />
+      }
     switch (activeTab) {
       case 'home':
         return <HomePage />;
@@ -889,75 +1010,7 @@ export default function Home() {
     <div className="min-h-screen bg-white">
       <Navigation />
       {renderContent()}
-      
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div className="col-span-1 md:col-span-2">
-              <div className="flex items-center mb-4">
-                <Building2 className="h-8 w-8 text-blue-400" />
-                <span className="ml-2 text-2xl font-bold">AFIX</span>
-              </div>
-              <p className="text-gray-300 mb-4">
-                {language === 'pt' 
-                  ? 'Conectamos você aos melhores profissionais de construção e remodelação. Qualidade garantida pelo Grupo AF.'
-                  : 'We connect you to the best construction and renovation professionals. Quality guaranteed by Grupo AF.'
-                }
-              </p>
-              <div className="flex space-x-4">
-                <a href={`mailto:${COMPANY_INFO.email}`} className="text-gray-300 hover:text-white">
-                  <Mail className="h-5 w-5" />
-                </a>
-                <a href={COMPANY_INFO.website} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-white">
-                  <Globe className="h-5 w-5" />
-                </a>
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="text-lg font-semibold mb-4">
-                {language === 'pt' ? 'Serviços' : 'Services'}
-              </h3>
-              <ul className="space-y-2">
-                {Object.entries(SERVICES).slice(0, 3).map(([key, service]) => (
-                  <li key={key}>
-                    <span className="text-gray-300">
-                      {language === 'pt' ? service.name : service.nameEn}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            
-            <div>
-              <h3 className="text-lg font-semibold mb-4">
-                {language === 'pt' ? 'Contato' : 'Contact'}
-              </h3>
-              <div className="space-y-2">
-                <div className="flex items-center text-gray-300">
-                  <Mail className="h-4 w-4 mr-2" />
-                  <span className="text-sm">{COMPANY_INFO.email}</span>
-                </div>
-                <div className="flex items-center text-gray-300">
-                  <Globe className="h-4 w-4 mr-2" />
-                  <span className="text-sm">{COMPANY_INFO.website}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="border-t border-gray-800 mt-8 pt-8 text-center">
-            <p className="text-gray-400">
-              © 2024 AFIX - {language === 'pt' ? 'Todos os direitos reservados' : 'All rights reserved'} | 
-              {language === 'pt' ? ' Powered by ' : ' Powered by '}
-              <a href={COMPANY_INFO.website} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">
-                Grupo AF
-              </a>
-            </p>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

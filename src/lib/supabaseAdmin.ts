@@ -8,8 +8,17 @@ function maskKey(key?: string) {
   return key.substring(0, 6) + '...' + key.substring(key.length - 4)
 }
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-const serviceRole = process.env.SUPABASE_SERVICE_ROLE
+// Helper to pick production-specific env vars when running in production (Vercel or NODE_ENV)
+function pickEnv(name: string) {
+  const isProd = (process.env.VERCEL_ENV === 'production') || (process.env.NODE_ENV === 'production') || (process.env.VERCEL_GIT_COMMIT_REF === 'main')
+  if (isProd) {
+    return process.env[`${name}_PROD`] ?? process.env[name]
+  }
+  return process.env[name]
+}
+
+const url = pickEnv('NEXT_PUBLIC_SUPABASE_URL')
+const serviceRole = pickEnv('SUPABASE_SERVICE_ROLE')
 
 if (!url || !serviceRole) {
   // eslint-disable-next-line no-console
@@ -21,6 +30,8 @@ if (!url || !serviceRole) {
     console.warn(`Supabase admin client - NEXT_PUBLIC_SUPABASE_URL appears malformed: ${maskKey(url)}`)
   } else {
     try {
+      // eslint-disable-next-line no-console
+      console.log('Creating Supabase admin client for', maskKey(url), 'serviceRole=', maskKey(serviceRole))
       supabaseAdmin = createClient(url, serviceRole)
     } catch (err: any) {
       // eslint-disable-next-line no-console

@@ -11,7 +11,7 @@ type LoginBody = {
 export async function POST(req: Request) {
   try {
     const body: LoginBody = await req.json()
-    const { email, password } = body
+  let { email, password } = body
 
     if (!email || !password) {
       return NextResponse.json({ ok: false, error: 'Email and password are required' }, { status: 400 })
@@ -22,11 +22,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'Server misconfigured: missing SUPABASE_SERVICE_ROLE or NEXT_PUBLIC_SUPABASE_URL' }, { status: 500 })
     }
 
+    // normalize email to avoid case mismatches
+    email = (email || '').toString().trim().toLowerCase()
+
     // Look up user in the 'users' table only
     const { data: userRecord, error: userError } = await (supabaseAdmin as any)
       .from('users')
-      .select('id, email, password_hash, full_name, role')
-      .eq('email', email)
+      // select fields we actually store: prefer `password_hash` and `role_id` (do not assume textual `role` exists)
+      .select('id, email, password_hash, full_name, role_id')
+  // use case-insensitive match to avoid failures when emails were stored with different casing
+  .ilike('email', email)
       .limit(1)
       .maybeSingle()
 
@@ -54,11 +59,40 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 })
     }
 
-    // Determine which column holds the hash
-    const hash = (userRecord.password_hash ?? userRecord.password ?? null) as string | null
+  // Determine which column holds the hash (we store as `password_hash`)
+  const hash = (userRecord.password_hash ?? null) as string | null
     if (!hash) {
       if (process.env.NODE_ENV !== 'production') console.log('Auth debug: user found but no password_hash for', userRecord.email)
       return NextResponse.json({ ok: false, error: `No password hash found for user` }, { status: 500 })
+    }
+
+    // determine role: support both `role` (string) and `role_id` (numeric FK)
+  // Accept both English ('client') and Portuguese ('cliente') role names used in DB
+  const allowedRoles = ['admin', 'client', 'cliente', 'franqueador', 'franqueado']
+    let userRole = ''
+    if (userRecord.role_id != null) {
+      // resolve role name from roles table
+      // role_id present — resolve role name from `roles` table using `role_id` column
+      try {
+        const maybe = await (supabaseAdmin as any).from('roles').select('role_id, name').eq('role_id', userRecord.role_id).maybeSingle()
+        if (maybe && (maybe as any).data && (maybe as any).data.name) {
+          userRole = String((maybe as any).data.name).toLowerCase()
+        } else {
+          // fallback: store numeric id as role string so token contains something
+          userRole = String(userRecord.role_id)
+        }
+      } catch (e) {
+        // ignore lookup errors and use numeric id
+        userRole = String(userRecord.role_id)
+      }
+    }
+
+    // If we resolved a textual role, enforce allowedRoles. If role is numeric (fallback), allow by default.
+    if (isNaN(Number(userRole))) {
+      if (!allowedRoles.includes(userRole)) {
+        if (process.env.NODE_ENV !== 'production') console.log('Auth debug: user has invalid role', userRecord.email, userRecord.role ?? userRecord.role_id)
+        return NextResponse.json({ ok: false, error: 'Access denied: invalid user role' }, { status: 403 })
+      }
     }
 
     if (process.env.NODE_ENV !== 'production') {
@@ -77,7 +111,9 @@ export async function POST(req: Request) {
     }
 
   // Authentication successful. Issue a signed JWT and set httpOnly cookie.
-  const safeUser = { id: userRecord.id, email: userRecord.email, role: userRecord.role }
+  // Use resolved textual role if available, otherwise fall back to numeric role_id string
+  const resolvedRole = (userRole && String(userRole).length > 0) ? userRole : (userRecord.role_id != null ? String(userRecord.role_id) : '')
+  const safeUser = { id: userRecord.id, email: userRecord.email, role: resolvedRole }
 
     const secret = process.env.JWT_SECRET
     if (!secret) {
