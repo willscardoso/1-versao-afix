@@ -25,11 +25,20 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
     // allow only specific fields to be updated
     const allowed: any = {}
+    if (body.full_name !== undefined) allowed.full_name = String(body.full_name)
+    if (body.email !== undefined) allowed.email = String(body.email)
+    if (body.phone !== undefined) allowed.phone = String(body.phone)
     if (body.service !== undefined) allowed.service = String(body.service)
     if (body.description !== undefined) allowed.description = String(body.description)
     if (body.location !== undefined) allowed.location = String(body.location)
     if (body.urgency !== undefined) allowed.urgency = String(body.urgency)
     if (body.budget !== undefined) allowed.budget = String(body.budget)
+    if (body.status !== undefined) {
+      const s = String(body.status)
+      // restrict to known statuses
+      const allowedStatuses = ['pendente', 'em_analise', 'respondido', 'finalizado']
+      if (allowedStatuses.includes(s)) allowed.status = s
+    }
 
   const { data, error } = await (supabaseAdmin as any).from('projetos').update(allowed).eq('id', id).select('*').maybeSingle()
     if (error) return NextResponse.json({ ok: false, error: String(error.message || error) }, { status: 500 })

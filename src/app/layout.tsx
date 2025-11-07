@@ -6,6 +6,8 @@ import "./globals.css";
 // Import all available fonts for AI usage
 import "../lib/fonts";
 import { Toaster } from "@/components/ui/toaster";
+import SiteHeader from '@/components/SiteHeader'
+import SiteFooter from '@/components/SiteFooter'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,7 +37,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <SiteHeader />
+        <main>
+          {children}
+        </main>
+        <SiteFooter />
         {/* Global toaster so useToast/toasts render anywhere in the app */}
         <Toaster />
       </body>

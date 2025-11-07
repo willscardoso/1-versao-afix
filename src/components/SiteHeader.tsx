@@ -10,6 +10,7 @@ export default function SiteHeader() {
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -17,6 +18,8 @@ export default function SiteHeader() {
       if (!mounted) return
       if (d?.ok && d.user) setCurrentUser(d.user)
     }).catch(()=>{})
+    // mark mounted on client to avoid hydration mismatches
+    setIsMounted(true)
     return () => { mounted = false }
   }, [])
 
@@ -37,41 +40,105 @@ export default function SiteHeader() {
           </div>
 
           <div className="hidden md:flex items-center space-x-8">
-            {Object.entries(currentLang.nav).map(([key, label]) => (
-              <button key={key} onClick={() => router.push('/') } className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">{label}</button>
-            ))}
+            {(() => {
+              // Role-based nav filtering
+              const role = String(currentUser?.role || '').toLowerCase()
+              const allowedForCliente = ['home', 'quote', 'dashboard']
+              const allowedForFranqueado = ['home', 'franchise', 'dashboard', 'chat']
+              const entries = Object.entries(currentLang.nav).filter(([k]) => {
+                // dashboard must be shown only to logged users
+                if (k === 'dashboard' && !currentUser) return false
+                if (role === 'cliente') return allowedForCliente.includes(k)
+                if (role === 'franqueado' || role === 'franqueador') return allowedForFranqueado.includes(k)
+                return true
+              })
 
-            <button onClick={toggleLanguage} className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">
-              <Globe className="h-4 w-4 mr-1" /> {language.toUpperCase()}
-            </button>
+              const to = (k: string) => {
+                switch (k) {
+                  case 'home': return '/'
+                  case 'quote': return '/quote'
+                  case 'franchise': return '/?tab=franchise'
+                  case 'dashboard': return '/banca'
+                  case 'chat': return '/?tab=chat'
+                  default: return '/'
+                }
+              }
 
+              return entries.map(([key, label]) => (
+                <button key={key} onClick={() => router.push(to(key)) } className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">{label}</button>
+              ))
+            })()}
+
+            {/* Auth controls (login/logout) */}
             {currentUser ? (
-              <button onClick={async () => { try { await fetch('/api/auth/logout', { method: 'POST' }) } catch(e){}; setCurrentUser(null); router.push('/') }} className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">Logout</button>
+              <div className="flex items-center space-x-3">
+                <div className="text-sm text-gray-700">
+                  <div className="font-medium">{currentUser.full_name || currentUser.email}</div>
+                </div>
+                <button onClick={async () => { try { await fetch('/api/auth/logout', { method: 'POST' }) } catch(e){}; setCurrentUser(null); try { window.dispatchEvent(new CustomEvent('afix:logout')) } catch(e){}; router.push('/') }} className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">Logout</button>
+              </div>
             ) : (
               <button onClick={() => router.push('/login')} className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">Login</button>
             )}
-          </div>
 
-          <div className="md:hidden">
-            <button onClick={() => setMobileOpen(!mobileOpen)} className="text-gray-700 hover:text-blue-600">{mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}</button>
+            {/* language toggle immediately after auth */}
+            <button onClick={toggleLanguage} className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600">
+              <Globe className="h-4 w-4 mr-1" /> {language.toUpperCase()}
+            </button>
           </div>
         </div>
       </div>
 
-      {mobileOpen && (
+      {/* mobile menu button - visible only on small screens */}
+      {isMounted && (
+        <div className="md:hidden absolute right-4 top-4">
+          <button onClick={() => setMobileOpen(!mobileOpen)} className="text-gray-700 hover:text-blue-600">{mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}</button>
+        </div>
+      )}
+
+      {isMounted && mobileOpen && (
         <div className="md:hidden bg-white border-t">
           <div className="px-2 pt-2 pb-3 space-y-1">
-            {Object.entries(currentLang.nav).map(([key, label]) => (
-              <button key={key} onClick={() => { setMobileOpen(false); router.push('/') }} className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">{label}</button>
-            ))}
-            <button onClick={() => toggleLanguage()} className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">{language.toUpperCase()}</button>
-            <div className="px-3 py-2">
-              {currentUser ? (
-                <button onClick={async () => { try { await fetch('/api/auth/logout', { method: 'POST' }) } catch(e){}; setMobileOpen(false); router.push('/') }} className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">Logout</button>
-              ) : (
-                <button onClick={() => { setMobileOpen(false); router.push('/login') }} className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">Login</button>
-              )}
-            </div>
+            {(() => {
+              const role = String(currentUser?.role || '').toLowerCase()
+              const allowedForCliente = ['home', 'quote', 'dashboard']
+              const allowedForFranqueado = ['home', 'franchise', 'dashboard', 'chat']
+              const entries = Object.entries(currentLang.nav).filter(([k]) => {
+                // dashboard must be shown only to logged users
+                if (k === 'dashboard' && !currentUser) return false
+                if (role === 'cliente') return allowedForCliente.includes(k)
+                if (role === 'franqueado' || role === 'franqueador') return allowedForFranqueado.includes(k)
+                return true
+              })
+
+              const to = (k: string) => {
+                switch (k) {
+                  case 'home': return '/'
+                  case 'quote': return '/quote'
+                  case 'franchise': return '/?tab=franchise'
+                  case 'dashboard': return '/banca'
+                  case 'chat': return '/?tab=chat'
+                  default: return '/'
+                }
+              }
+
+              return entries.map(([key, label]) => (
+                <button key={key} onClick={() => { setMobileOpen(false); router.push(to(key)) }} className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">{label}</button>
+              ))
+            })()}
+
+            {/* Auth block for mobile: name + logout OR login */}
+            {currentUser ? (
+              <div className="px-3 py-2 space-y-2">
+                <div className="text-sm font-medium text-gray-700">{currentUser.full_name || currentUser.email}</div>
+                <button onClick={async () => { try { await fetch('/api/auth/logout', { method: 'POST' }) } catch(e){}; setMobileOpen(false); setCurrentUser(null); try { window.dispatchEvent(new CustomEvent('afix:logout')) } catch(e){}; router.push('/') }} className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">Logout</button>
+              </div>
+            ) : (
+              <button onClick={() => { setMobileOpen(false); router.push('/login') }} className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">Login</button>
+            )}
+
+            {/* language toggle placed immediately after auth */}
+            <button onClick={() => { setMobileOpen(false); toggleLanguage() }} className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600">{language.toUpperCase()}</button>
           </div>
         </div>
       )}

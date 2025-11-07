@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 // Login is a dedicated page at /login
@@ -9,7 +10,7 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { SERVICES, URGENCY_LEVELS, BUDGET_RANGES, COMPANY_INFO } from '@/lib/constants';
 import { ServiceType, QuoteRequest } from '@/lib/types';
 import BancaPage from '@/app/banca/page'
-import SiteFooter from '@/components/SiteFooter'
+import QuotePageComponent from '@/components/QuotePage'
 
 export default function Home() {
   const { language, toggleLanguage } = useLanguage();
@@ -58,6 +59,28 @@ export default function Home() {
       });
     return () => { mounted = false };
   }, []);
+
+  // Listen for global logout events (dispatched by other components) and update local state immediately
+  useEffect(() => {
+    const onLogout = () => {
+      setCurrentUser(null)
+      setActiveTab('home')
+      setProjetos([])
+    }
+    try {
+      window.addEventListener('afix:logout', onLogout as EventListener)
+    } catch (e) {}
+    return () => { try { window.removeEventListener('afix:logout', onLogout as EventListener) } catch (e) {} }
+  }, [])
+
+  // read `tab` query param to control which internal page is shown when on /
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const tab = searchParams?.get('tab')
+    if (tab && ['home','quote','franchise','dashboard','chat'].includes(tab)) {
+      setActiveTab(tab as any)
+    }
+  }, [searchParams])
 
   // load projetos for cliente users from the secure server-side endpoint
   useEffect(() => {
@@ -264,7 +287,7 @@ export default function Home() {
             <Building2 className="h-8 w-8 text-blue-600" />
             <span className="ml-2 text-2xl font-bold text-gray-900">AFIX</span>
           </div>
-          
+
           <div className="hidden md:flex items-center space-x-8">
             {Object.entries(currentLang.nav).map(([key, label]) => (
               <button
@@ -295,6 +318,7 @@ export default function Home() {
                   } catch (e) {}
                   setCurrentUser(null)
                   setActiveTab('home')
+                  try { window.dispatchEvent(new CustomEvent('afix:logout')) } catch (e) {}
                   router.push('/')
                 }}
                 className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600"
@@ -353,6 +377,7 @@ export default function Home() {
                       setCurrentUser(null)
                       setMobileMenuOpen(false)
                       setActiveTab('home')
+                      try { window.dispatchEvent(new CustomEvent('afix:logout')) } catch (e) {}
                       router.push('/')
                     }}
                   className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600"
@@ -458,157 +483,8 @@ export default function Home() {
     </div>
   );
 
-  const QuotePage = () => (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            {currentLang.quote.title}
-          </h1>
-          <p className="text-xl text-gray-600">
-            {currentLang.quote.subtitle}
-          </p>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <form onSubmit={handleQuoteSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {currentLang.quote.form.name} *
-                </label>
-                <input
-                  type="text"
-                  required
-                  ref={nameRef}
-                  defaultValue={quoteForm.name}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {currentLang.quote.form.email} *
-                </label>
-                <input
-                  type="email"
-                  required
-                  ref={emailRef}
-                  defaultValue={quoteForm.email}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {currentLang.quote.form.phone} *
-                </label>
-                <input
-                  type="tel"
-                  required
-                  ref={phoneRef}
-                  defaultValue={quoteForm.phone}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {currentLang.quote.form.service} *
-                </label>
-                <select
-                  required
-                  ref={serviceRef}
-                  defaultValue={quoteForm.service}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Selecione um serviço</option>
-                  {Object.entries(SERVICES).map(([key, service]) => (
-                    <option key={key} value={key}>
-                      {language === 'pt' ? service.name : service.nameEn}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {currentLang.quote.form.location} *
-              </label>
-              <input
-                type="text"
-                required
-                ref={locationRef}
-                defaultValue={quoteForm.location}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder={language === 'pt' ? 'Cidade, Distrito' : 'City, District'}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {currentLang.quote.form.description} *
-              </label>
-              <textarea
-                required
-                rows={4}
-                ref={descriptionRef}
-                defaultValue={quoteForm.description}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder={language === 'pt' ? 'Descreva detalhadamente o seu projeto...' : 'Describe your project in detail...'}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {currentLang.quote.form.urgency}
-                </label>
-                <select
-                  ref={urgencyRef}
-                  defaultValue={quoteForm.urgency}
-                  onChange={() => { /* keep uncontrolled */ }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {Object.entries(URGENCY_LEVELS).map(([key, level]) => (
-                    <option key={key} value={key}>
-                      {language === 'pt' ? level.name : level.nameEn}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {currentLang.quote.form.budget}
-                </label>
-                <select
-                  ref={budgetRef}
-                  defaultValue={quoteForm.budget}
-                  onChange={() => { /* keep uncontrolled */ }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Selecione uma faixa</option>
-                  {BUDGET_RANGES.map((range) => (
-                    <option key={range.value} value={range.value}>
-                      {language === 'pt' ? range.label : range.labelEn}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-blue-600 text-white py-4 px-6 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors"
-            >
-              {currentLang.quote.form.submit}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
+  // use the standalone QuotePage component
+  const QuotePage = () => <QuotePageComponent />
 
   const FranchisePage = () => (
     <div className="min-h-screen bg-gray-50 py-12">
@@ -983,6 +859,11 @@ export default function Home() {
   );
 
   const renderContent = () => {
+      // If the activeTab explicitly requests the franchise view, honor it regardless
+      // of authentication state (so clicking the "Franquia" menu opens the Home tab).
+  if (activeTab === 'franchise') return <FranchisePage />
+  if (activeTab === 'chat') return <ChatPage />
+
       // If user is authenticated, show the banca (project details) for clients,
       // otherwise show the admin Dashboard.
       if (currentUser) {
@@ -995,12 +876,10 @@ export default function Home() {
         return <HomePage />;
       case 'quote':
         return <QuotePage />;
-      case 'franchise':
-        return <FranchisePage />;
+      
       case 'dashboard':
         return <DashboardPage />;
-      case 'chat':
-        return <ChatPage />;
+      
       default:
         return <HomePage />;
     }
@@ -1008,9 +887,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white">
-      <Navigation />
       {renderContent()}
-      <SiteFooter />
     </div>
   );
 }

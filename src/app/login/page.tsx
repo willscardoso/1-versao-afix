@@ -2,14 +2,12 @@
 
 import React from 'react'
 import LoginForm from '@/components/LoginForm'
-import SiteHeader from '@/components/SiteHeader'
-import SiteFooter from '@/components/SiteFooter'
+// SiteHeader and SiteFooter are now global in the root layout
 import Link from 'next/link'
 
 export default function LoginPage() {
   return (
     <div className="min-h-screen bg-white">
-      <SiteHeader />
       <main className="py-12">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white rounded-lg overflow-hidden shadow-lg md:h-[600px]">
@@ -28,6 +26,10 @@ export default function LoginPage() {
                 {/* title removed per request */}
 
                 <LoginForm />
+                {/* Mobile-only register CTA (left panel is hidden on small screens) */}
+                <div className="mt-4 text-center md:hidden">
+                  <Link href="/register" className="inline-block px-4 py-2 border rounded-md text-sm font-medium text-blue-600 hover:bg-blue-50">Registar</Link>
+                </div>
 
                 <div className="mt-6 text-center text-sm text-gray-600">
                   <Link href="/" className="text-blue-600 hover:underline">Voltar ao início</Link>
@@ -37,7 +39,6 @@ export default function LoginPage() {
           </div>
         </div>
       </main>
-      <SiteFooter />
     </div>
   )
 }

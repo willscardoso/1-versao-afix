@@ -3,8 +3,7 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/hooks/use-toast'
-import SiteHeader from '@/components/SiteHeader'
-import SiteFooter from '@/components/SiteFooter'
+// SiteHeader and SiteFooter are now provided globally by the root layout
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -68,7 +67,6 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <SiteHeader />
       <main className="py-12">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white rounded-lg overflow-hidden shadow-lg md:h-[600px]">
@@ -162,7 +160,6 @@ export default function RegisterPage() {
           </div>
         </div>
       </main>
-      <SiteFooter />
     </div>
   )
 }
